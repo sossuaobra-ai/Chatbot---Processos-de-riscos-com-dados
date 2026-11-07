@@ -2,197 +2,232 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-from openai import AzureOpenAI
 
-# 1. Configuração da página e tema visual estilo WhatsApp Web
+# 1. Configuração da página e layout wide
 st.set_page_config(
-    page_title="RiskAnalytics AI — Chat & Azure RAG",
-    page_icon="💬",
+    page_title="Painel Analítico de Manutenção e Serviços de TI",
+    page_icon="📊",
     layout="wide"
 )
 
-# Estilização CSS personalizada para o layout do WhatsApp
+# 2. Estilização CSS personalizada (Dashboard principal + Popup flutuante estilo WhatsApp)
 st.markdown("""
 <style>
+    /* Estilos Gerais */
     .stApp {
-        background-color: #0b141a;
-        color: #e9edef;
+        background-color: #f8f9fa;
+        color: #1f2937;
     }
+    
     [data-testid="stSidebar"] {
-        background-color: #111b21;
-        border-right: 1px solid #222d34;
+        background-color: #ffffff;
+        border-right: 1px solid #e5e7eb;
     }
-    .chat-bubble-user {
-        background-color: #005c4b;
-        color: #e9edef;
-        padding: 10px 14px;
-        border-radius: 8px 8px 0px 8px;
-        margin: 8px 0px 8px auto;
-        max-width: 75%;
-        box-shadow: 0 1px 0.5px rgba(11,20,26,.13);
+
+    /* POPUP FLUTUANTE ESTILO WHATSAPP (Canto Inferior Direito) */
+    .whatsapp-popup-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 360px;
+        height: 520px;
+        background-color: #0b141a;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        z-index: 999999;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid #222d34;
         font-family: sans-serif;
     }
-    .chat-bubble-assistant {
+    
+    .whatsapp-header {
         background-color: #202c33;
         color: #e9edef;
-        padding: 10px 14px;
-        border-radius: 8px 8px 8px 0px;
-        margin: 8px auto 8px 0px;
-        max-width: 85%;
-        box-shadow: 0 1px 0.5px rgba(11,20,26,.13);
-        font-family: sans-serif;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-bottom: 1px solid #222d34;
     }
-    .chat-time {
-        font-size: 0.7em;
+    
+    .wa-bubble-user {
+        background-color: #005c4b;
+        color: #e9edef;
+        padding: 8px 12px;
+        border-radius: 8px 8px 0px 8px;
+        align-self: flex-end;
+        max-width: 80%;
+        font-size: 0.85rem;
+    }
+    
+    .wa-bubble-assistant {
+        background-color: #202c33;
+        color: #e9edef;
+        padding: 8px 12px;
+        border-radius: 8px 8px 8px 0px;
+        align-self: flex-start;
+        max-width: 85%;
+        font-size: 0.85rem;
+    }
+    
+    .wa-time {
+        font-size: 0.65rem;
         color: #8696a0;
         text-align: right;
-        margin-top: 4px;
+        margin-top: 2px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# 2. Barra Lateral: Configurações do Azure e Upload de Arquivos
+# 3. Sidebar de Configurações e Upload
 with st.sidebar:
-    st.header("⚙️ Configurações Azure AI")
-    
-    api_key = st.text_input("Azure OpenAI API Key", type="password")
-    azure_endpoint = st.text_input("Azure Endpoint", placeholder="https://seu-recurso.openai.azure.com/")
-    model_deployment = st.text_input("Nome do Deployment / Modelo", value="gpt-4o")
-    api_version = st.text_input("API Version", value="2024-02-01")
+    st.markdown("### Deployment / Modelo:")
+    model_deployment = st.text_input("Modelo", value="gpt-4.1-mini", label_visibility="collapsed")
     
     st.markdown("---")
-    st.header("📂 Base de Conhecimento (RAG)")
-    uploaded_files = st.file_uploader(
-        "Envie documentos de RAG (PDF, TXT, CSV, XLSX)", 
-        type=["pdf", "txt", "csv", "xlsx"], 
-        accept_multiple_files=True
-    )
-    
+    st.markdown("### Persona da IA:")
     system_persona = st.text_area(
-        "Persona da IA / Instruções de Sistema", 
-        value="Você é um assistente especialista sênior em gestão de riscos e auditoria de processos de atendimento. Responda com base nos documentos carregados e análise de dados."
+        "Persona", 
+        value="forma ágil, clara e cordial. Consulte sempre a base anexada para orçamentos, procedimentos e SLAs.",
+        label_visibility="collapsed",
+        height=100
     )
     
     st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
-        start_chat = st.button("🚀 Iniciar Chat")
-    with col2:
-        clear_chat = st.button("🧹 Limpar Conversa")
+    st.markdown("### Upload da Base (CSV para Dashboard + Chat):")
+    uploaded_file = st.file_uploader("Upload CSV", type=["csv", "xlsx"], label_visibility="collapsed")
+    
+    st.markdown("---")
+    if uploaded_file is not None:
+        st.success(f"Carregado: {uploaded_file.name}")
+    else:
+        st.info("Carregue uma base de dados (ex: tabela_custos_ti.csv)")
+        
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        btn_connect = st.button("🔌 Conectar IA", type="primary")
+    with col_b2:
+        btn_new = st.button("💬 Novo Chat")
 
-if clear_chat:
-    st.session_state.messages = []
+if btn_new:
+    st.session_state.wa_messages = [
+        {"role": "assistant", "content": "Olá! Como posso ajudar você hoje com o suporte de TI?", "time": "04:44"}
+    ]
     st.rerun()
 
-# 3. Inicialização do Histórico no Session State
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": "Olá! Insira suas credenciais da Azure na barra lateral, envie seus arquivos de contexto e clique em **Iniciar Chat** para começarmos a interagir."}
+if "wa_messages" not in st.session_state:
+    st.session_state.wa_messages = [
+        {"role": "assistant", "content": "Olá! Como posso ajudar você hoje com o suporte de TI?", "time": "04:44"}
     ]
 
-# Extração de texto dos arquivos enviados (RAG)
-rag_context = ""
-df_data = None
+# Carregamento do DataFrame padrão ou enviado
+df = None
+if uploaded_file is not None:
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+    except Exception as e:
+        st.error(f"Erro ao ler arquivo: {e}")
+else:
+    # Dados de exemplo simulando a imagem de referência
+    data_exemplo = {
+        "ID_Servico": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "Categoria": ["Hardware", "Hardware", "Software", "Hardware", "Software", "Software", "Hardware", "Software", "Hardware", "Software", "Hardware", "Software"],
+        "Valor_Total_Sugerido_BRL": [250, 380, 120, 390, 580, 110, 140, 120, 130, 110, 130, 90],
+        "SLA_Horas": [4.5, 6.0, 3.0, 5.5, 8.0, 4.0, 5.0, 6.5, 7.0, 5.0, 4.5, 5.0]
+    }
+    df = pd.DataFrame(data_exemplo)
 
-if uploaded_files:
-    for file in uploaded_files:
-        if file.name.endswith(".csv"):
-            df_data = pd.read_csv(file)
-            rag_context += f"\n--- Conteúdo do CSV ({file.name}) ---\n" + df_data.to_string()
-        elif file.name.endswith(".xlsx"):
-            df_data = pd.read_excel(file)
-            rag_context += f"\n--- Conteúdo do Excel ({file.name}) ---\n" + df_data.to_string()
-        elif file.name.endswith(".txt"):
-            text_content = file.read().decode("utf-8")
-            rag_context += f"\n--- Conteúdo do TXT ({file.name}) ---\n" + text_content
-        elif file.name.endswith(".pdf"):
-            try:
-                import pypdf
-                reader = pypdf.PdfReader(file)
-                pdf_text = "".join([page.extract_text() for page in reader.pages])
-                rag_context += f"\n--- Conteúdo do PDF ({file.name}) ---\n" + pdf_text
-            except Exception as e:
-                st.sidebar.error(f"Erro ao ler PDF: {e}")
+# 4. Dashboard Principal Inspirado na Imagem
+st.markdown("## 📊 Painel Analítico de Manutenção e Serviços de TI")
 
-# Header Principal
-st.title("💬 RiskAnalytics AI — WhatsApp Style & Azure RAG")
-st.caption("Aplicativo integrado com OpenAI (Azure) para análise interativa de processos de risco.")
+# Métricas Topo
+col_m1, col_m2, col_m3 = st.columns(3)
+with col_m1:
+    st.metric("Total de Serviços", f"{len(df)} itens")
+with col_m2:
+    val_medio = df["Valor_Total_Sugerido_BRL"].mean() if "Valor_Total_Sugerido_BRL" in df.columns else 207.08
+    st.metric("Ticket Médio", f"R$ {val_medio:,.2f}")
+with col_m3:
+    sla_medio = df["SLA_Horas"].mean() if "SLA_Horas" in df.columns else 5.9
+    st.metric("SLA Médio", f"{sla_medio:.1f} h")
 
-# Renderização do Histórico Estilo WhatsApp
-for msg in st.session_state.messages:
-    now = datetime.now().strftime("%H:%M")
-    if msg["role"] == "user":
-        st.markdown(f'<div class="chat-bubble-user">{msg["content"]}<div class="chat-time">{now} ✓✓</div></div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="chat-bubble-assistant">**Atente-se a resposta abaixo:**<br>{msg["content"]}<div class="chat-time">{now}</div></div>', unsafe_allow_html=True)
-        if "chart" in msg and msg["chart"] is not None:
-            st.plotly_chart(msg["chart"], use_container_width=True)
+st.markdown("---")
 
-# Entrada do Chat
-prompt = st.chat_input("Digite sua pergunta sobre os riscos, custos ou solicite gráficos...")
+# Gráficos Principais (Barras e Pizza)
+col_g1, col_g2 = st.columns([1.3, 1])
 
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    st.rerun()
+with col_g1:
+    st.markdown("##### Custo Total por Código de Serviço (R$)")
+    if "ID_Servico" in df.columns and "Valor_Total_Sugerido_BRL" in df.columns:
+        fig_bar = px.bar(
+            df, x="ID_Servico", y="Valor_Total_Sugerido_BRL", 
+            color="Categoria" if "Categoria" in df.columns else None,
+            color_discrete_sequence=["#4f46e5", "#ef4444"]
+        )
+        fig_bar.update_layout(
+            margin=dict(l=10, r=10, t=10, b=10),
+            height=300,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
 
-# Processamento da Resposta do Assistente
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-    user_query = st.session_state.messages[-1]["content"].lower()
+with col_g2:
+    st.markdown("##### Distribuição de Valores por Categoria")
+    if "Categoria" in df.columns and "Valor_Total_Sugerido_BRL" in df.columns:
+        fig_pie = px.pie(
+            df, names="Categoria", values="Valor_Total_Sugerido_BRL", 
+            hole=0.5,
+            color_discrete_sequence=["#ef4444", "#10b981", "#3b82f6"]
+        )
+        fig_pie.update_layout(
+            margin=dict(l=10, r=10, t=10, b=10),
+            height=300,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+
+# 5. JANELA FLUTUANTE ESTILO WHATSAPP (Popup no canto inferior direito)
+st.markdown("""
+<div class="whatsapp-popup-container">
+    <div class="whatsapp-header">
+        <div style="background: #00a884; border-radius: 50%; width: 35px; height: 35px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+            🎧
+        </div>
+        <div>
+            <div style="font-weight: bold; font-size: 0.9rem;">Suporte de TI Online</div>
+            <div style="font-size: 0.7rem; color: #00a884;">● online agora</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Container interativo do Chat flutuante
+with st.container():
+    st.markdown('<div style="position: fixed; bottom: 80px; right: 30px; width: 335px; z-index: 1000000; background: #0b141a; padding: 10px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">', unsafe_allow_html=True)
     
-    # Verificação se o usuário pediu gráficos e temos dados estruturados (pandas)
-    chart1, chart2, chart3 = None, None, None
-    if any(w in user_query for w in ["grafico", "gráficos", "dashboard", "analise", "análise"]) and df_data is not None:
-        try:
-            col_etapa = [c for c in df_data.columns if "Etapa" in c or "etapa" in c][0]
-            col_vol = [c for c in df_data.columns if "Volume" in c or "Ocorrências" in c or "Ocorrencias" in c][0]
-            df_etapa = df_data.groupby(col_etapa)[col_vol].sum().reset_index()
-            chart1 = px.bar(df_etapa, x=col_etapa, y=col_vol, title="1. Volume de Erros por Etapa", template="plotly_dark", color=col_etapa)
-            
-            col_id = [c for c in df_data.columns if "ID" in c or "Risco" in c][0]
-            col_custo = [c for c in df_data.columns if "Custo" in c or "Valor" in c][0]
-            chart2 = px.bar(df_data, x=col_custo, y=col_id, orientation='h', title="2. Impacto Financeiro (R$) por Risco", template="plotly_dark", color=col_custo, color_continuous_scale="Reds")
-            
-            col_status = [c for c in df_data.columns if "Status" in c or "status" in c][0]
-            df_status = df_data.groupby(col_status).size().reset_index(name='Qtd')
-            chart3 = px.pie(df_status, names=col_status, values='Qtd', hole=0.4, title="3. Status de Mitigação", template="plotly_dark")
-        except Exception:
-            pass
+    chat_container = st.container(height=280)
+    with chat_container:
+        for m in st.session_state.wa_messages:
+            if m["role"] == "user":
+                st.markdown(f'<div class="wa-bubble-user">{m["content"]}<div class="wa-time">{m["time"]} ✓✓</div></div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="wa-bubble-assistant">{m["content"]}<div class="wa-time">{m.get("time","04:44")}</div></div>', unsafe_allow_html=True)
+                
+    user_msg = st.chat_input("Digite sua dúvida ou código de erro...", key="wa_chat_input")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # Chamada real ao Azure OpenAI se credenciais fornecidas
-    ai_response = ""
-    if api_key and azure_endpoint:
-        try:
-            client = AzureOpenAI(
-                api_key=api_key,
-                api_version=api_version,
-                azure_endpoint=azure_endpoint
-            )
-            
-            messages_payload = [
-                {"role": "system", "content": f"{system_persona}\n\nContexto dos Documentos:\n{rag_context}"}
-            ]
-            for m in st.session_state.messages:
-                if m["role"] in ["user", "assistant"]:
-                    messages_payload.append({"role": m["role"], "content": m["content"]})
-                    
-            response = client.chat.completions.create(
-                model=model_deployment,
-                messages=messages_payload,
-                temperature=0.2,
-                stream=False
-            )
-            ai_response = response.choices[0].message.content
-        except Exception as e:
-            ai_response = f"Erro ao comunicar com a API da Azure OpenAI: {e}"
-    else:
-        ai_response = "Por favor, insira as credenciais da Azure OpenAI na barra lateral para receber respostas geradas pela IA. Abaixo estão os dados preliminares da sua solicitação."
-
-    # Adiciona resposta ao histórico
-    st.session_state.messages.append({"role": "assistant", "content": ai_response})
-    if chart1:
-        st.session_state.messages.append({"role": "assistant", "content": "📊 **Visão Operacional:**", "chart": chart1})
-    if chart2:
-        st.session_state.messages.append({"role": "assistant", "content": "💰 **Visão Financeira:**", "chart": chart2})
-    if chart3:
-        st.session_state.messages.append({"role": "assistant", "content": "🎯 **Visão de Governança:**", "chart": chart3})
+if user_msg:
+    now_str = datetime.now().strftime("%H:%M")
+    st.session_state.wa_messages.append({"role": "user", "content": user_msg, "time": now_str})
+    
+    resp_text = f"Recebi sua pergunta sobre: '{user_msg}'. O ticket médio atual é de R$ {df['Valor_Total_Sugerido_BRL'].mean():,.2f} com SLA médio de {df['SLA_Horas'].mean():.1f}h."
+    st.session_state.wa_messages.append({"role": "assistant", "content": resp_text, "time": now_str})
     st.rerun()
